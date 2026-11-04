@@ -35,14 +35,14 @@ Proyek ini juga menyediakan rancangan kendali manual melalui dashboard untuk keb
 
 | Feature | Description | Status |
 |---|---|---|
-| RFID authentication | Validasi UID kartu RFID | Planned |
+| RFID authentication | Validasi UID kartu RFID aktif | Implemented in Node-RED flow (local test pending) |
 | Entry gate | Kontrol palang kendaraan masuk | Planned |
 | Exit gate | Kontrol palang kendaraan keluar | Planned |
-| Parking activity log | Pencatatan waktu dan aktivitas kendaraan | Planned |
-| Live gate monitoring | Monitoring status dua gerbang | Planned |
+| Parking activity log | Pencatatan sesi masuk dan keluar | Implemented in SQLite trigger (local test pending) |
+| Live gate monitoring | Status perangkat melalui MQTT | Implemented in flow (local test pending) |
 | Parking statistics | Ringkasan kendaraan masuk, keluar, dan di dalam area | Planned |
-| Emergency control | Perintah buka/tutup gerbang dari dashboard | Planned |
-| SQLite database | Penyimpanan data secara lokal | Planned |
+| Emergency control | Perintah buka/tutup gerbang dari dashboard | API and UI added (auth/safety pending) |
+| SQLite database | Penyimpanan kartu, event, sesi, dan perintah | Schema and triggers added |
 | Virtual device simulator | Simulasi ESP32 dan transaksi RFID | Planned |
 
 Status fitur akan diperbarui sesuai hasil implementasi dan pengujian.
@@ -186,7 +186,7 @@ Directories for firmware, backend, frontend, simulator, and assets will be added
 
 ## Getting Started
 
-The application is not yet ready to run. Installation and execution instructions will be added after the frontend, backend, and simulator have been implemented.
+Node-RED integration, SQLite schema, dashboard page, MQTT device protocol, and starter ESP32 firmware are available on the `node-red-connection` branch. See [Node-RED setup](node-red/README.md) and [firmware setup](firmware/README.md). The flow and sketches still require local deployment and hardware testing.
 
 ## Documentation
 
