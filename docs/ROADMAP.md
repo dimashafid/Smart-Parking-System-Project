@@ -1,6 +1,6 @@
 # Development Roadmap
 
-This roadmap tracks the planned work for the Smart Parking System. Items should only be marked complete after implementation and verification.
+This roadmap tracks the planned work for the Smart Parking System. Code deliverables may be marked complete when added; deployment, runtime, and hardware verification remain separate checklist items.
 
 ## Phase 1 — Project Foundation
 
@@ -8,18 +8,18 @@ This roadmap tracks the planned work for the Smart Parking System. Items should 
 - [x] Write initial README and project documentation.
 - [ ] Confirm team members and responsibilities.
 - [ ] Confirm final hardware list and wiring plan.
-- [x] Select Node-RED as the initial flow runtime.\n- [ ] Confirm Node-RED dashboard package and ESP32 communication protocol.
+- [x] Select Node-RED as the initial flow runtime.\n- [x] Select Node-RED HTTP template dashboard and MQTT topic contract.
 - [ ] Agree on naming conventions and API payload format.
 
 ## Phase 2 — Node-RED and Database
 
 - [x] Add initial SQLite schema.\n- [x] Add starter Node-RED HTTP and SQLite flow.\n- [ ] Configure and verify the flow in the team's Node-RED runtime.
-- [ ] Add RFID card registration and validation.
-- [ ] Implement registered-card validation and entry event processing.
-- [ ] Implement exit event processing and parking-session closure.
+- [x] Add RFID card registration endpoint and dashboard form.
+- [x] Implement active-card validation and entry session trigger (runtime test pending).
+- [x] Implement exit validation and session closure trigger (runtime test pending).
 - [ ] Prevent duplicate event processing.
-- [ ] Implement parking summary and history endpoints.
-- [ ] Implement gate command lifecycle.
+- [x] Add parking summary and history endpoints.
+- [x] Add manual/automatic command recording and MQTT publishing (device acknowledgement verification pending).
 - [ ] Add authentication and authorization for dashboard controls.
 
 ## Phase 3 — Virtual Device Simulation
@@ -32,22 +32,22 @@ This roadmap tracks the planned work for the Smart Parking System. Items should 
 
 ## Phase 4 — Web Dashboard
 
-- [ ] Build Node-RED dashboard overview.
-- [ ] Build separate entry and exit gate monitoring panels in the selected Node-RED dashboard.
+- [x] Add responsive overview dashboard page.
+- [x] Add entry and exit gate monitoring panels.
 - [ ] Build parking history with date/time filters.
-- [ ] Build RFID card management.
-- [ ] Build emergency control interface.
+- [x] Add RFID card registration and list view.
+- [x] Add manual open/close controls (authorization and safety hardening pending).
 - [ ] Display device connectivity and last-seen timestamps.
 - [ ] Add loading, error, pending, and offline states.
 
 ## Phase 5 — ESP32 and Hardware Integration
 
-- [ ] Implement entry-gate firmware.
-- [ ] Implement exit-gate firmware.
+- [x] Add starter entry-gate ESP32 sketch (hardware test pending).
+- [x] Add starter exit-gate ESP32 sketch (hardware test pending).
 - [ ] Connect and test RFID readers.
 - [ ] Connect and test actuators.
 - [ ] Add buzzer feedback for access results.
-- [ ] Connect devices to Node-RED using the agreed MQTT or HTTP protocol.
+- [x] Define MQTT topic and payload contract; physical integration pending.
 - [ ] Test power stability and restart behavior.
 - [ ] Verify reported gate state against the available hardware feedback.
 
