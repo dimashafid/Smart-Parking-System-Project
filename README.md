@@ -91,10 +91,10 @@ The virtual simulator and physical ESP32 devices are intended to use the same No
 | Actuator | Servo / compatible gate actuator | Gate movement |
 | Notification | Buzzer | Audio feedback |
 | Flow runtime and application logic | Node-RED | API, event processing, and device integration |
-| Dashboard | Node-RED Dashboard package (to be selected) | Monitoring and operator controls |
+| Dashboard | Node-RED HTTP template dashboard | Monitoring, card registration, and operator controls |
 | Database | SQLite via Node-RED SQLite node | Local structured data storage |
-| Communication | HTTP initially; MQTT to be evaluated | Device and dashboard communication |
-| Simulator | Node-RED Inject nodes / virtual device client | Hardware-independent testing |
+| Communication | MQTT via Mosquitto; HTTP API for dashboard | Device events and commands |
+| Simulator | Planned MQTT test client | Hardware-independent testing |
 
 The current implementation direction uses Node-RED. The exact ESP32 transport (MQTT or HTTP) and dashboard package/version will be finalized during integration.
 
