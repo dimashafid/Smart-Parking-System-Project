@@ -1,16 +1,36 @@
 [
   {
-    "id": "tab_parking",
+    "id": "sp_tab",
     "type": "tab",
-    "label": "Smart Parking API",
+    "label": "Smart Parking Core",
     "disabled": false,
-    "info": "HTTP API and SQLite RFID event logging."
+    "info": "HTTP API, RFID session logic, MQTT device integration"
+  },
+  {
+    "id": "mqttbroker",
+    "type": "mqtt-broker",
+    "name": "Mosquitto local",
+    "broker": "localhost",
+    "port": "1883",
+    "clientid": "node-red-parking",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true
+  },
+  {
+    "id": "dbconfig",
+    "type": "sqlitedb",
+    "db": "./data/parking.db",
+    "mode": "RWC",
+    "name": "Parking SQLite"
   },
   {
     "id": "in_health",
     "type": "http in",
-    "z": "tab_parking",
-    "name": "Health check",
+    "z": "sp_tab",
+    "name": "in_health",
     "url": "/api/health",
     "method": "get",
     "upload": false,
@@ -19,22 +39,57 @@
     "y": 80,
     "wires": [
       [
-        "fn_health"
+        "prep_health"
       ]
     ]
   },
   {
-    "id": "fn_health",
+    "id": "prep_health",
     "type": "function",
-    "z": "tab_parking",
-    "name": "Health response",
-    "func": "msg.statusCode = 200;\nmsg.payload = { ok: true, service: \"smart-parking-node-red\", timestamp: new Date().toISOString() };\nreturn msg;",
+    "z": "sp_tab",
+    "name": "health SQL",
+    "func": "msg.topic=\"SELECT 1 AS db_ok\";msg.payload=[];return msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 350,
+    "x": 480,
+    "y": 80,
+    "wires": [
+      [
+        "sql_health"
+      ]
+    ]
+  },
+  {
+    "id": "sql_health",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "health",
+    "x": 770,
+    "y": 80,
+    "wires": [
+      [
+        "fmt_health"
+      ]
+    ]
+  },
+  {
+    "id": "fmt_health",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "health response",
+    "func": "msg.statusCode=200;msg.payload={ok:true,database:msg.payload?.[0]?.db_ok===1,time:new Date().toISOString()};return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
     "y": 80,
     "wires": [
       [
@@ -45,47 +100,521 @@
   {
     "id": "out_health",
     "type": "http response",
-    "z": "tab_parking",
-    "name": "Return health",
+    "z": "sp_tab",
+    "name": "out_health",
     "statusCode": "",
-    "headers": {},
-    "x": 570,
-    "y": 80,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 110,
     "wires": []
   },
   {
-    "id": "in_scan",
+    "id": "in_cards",
     "type": "http in",
-    "z": "tab_parking",
-    "name": "RFID scan",
-    "url": "/api/rfid/scan",
-    "method": "post",
+    "z": "sp_tab",
+    "name": "in_cards",
+    "url": "/api/cards",
+    "method": "get",
     "upload": false,
     "swaggerDoc": "",
     "x": 140,
-    "y": 200,
+    "y": 190,
     "wires": [
       [
-        "fn_validate"
+        "prep_cards"
       ]
     ]
   },
   {
-    "id": "fn_validate",
+    "id": "prep_cards",
     "type": "function",
-    "z": "tab_parking",
-    "name": "Validate scan and prepare SQL",
-    "func": "const body = msg.payload || {};\nconst gate = String(body.gate_id || \"\").toLowerCase();\nconst uid = String(body.uid || \"\").replace(/\\s+/g, \"\").toUpperCase();\nif (![\"entry\", \"exit\"].includes(gate) || !/^[A-F0-9]{4,32}$/.test(uid)) {\n    msg.statusCode = 400;\n    msg.payload = { ok: false, error: \"gate_id must be entry or exit and uid must contain 4-32 hexadecimal characters\" };\n    return [null, msg];\n}\nmsg.scan = { gate_id: gate, uid: uid, timestamp: new Date().toISOString() };\nmsg.topic = \"INSERT INTO access_events (gate_id, card_uid, event_type, created_at) VALUES (?, ?, 'rfid_scan', ?)\";\nmsg.payload = [gate, uid, msg.scan.timestamp];\nreturn [msg, null];",
+    "z": "sp_tab",
+    "name": "cards SQL",
+    "func": "msg.topic=\"SELECT uid,owner_name,vehicle_plate,is_active,created_at FROM rfid_cards ORDER BY id DESC\";msg.payload=[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 190,
+    "wires": [
+      [
+        "sql_cards"
+      ]
+    ]
+  },
+  {
+    "id": "sql_cards",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "cards",
+    "x": 770,
+    "y": 190,
+    "wires": [
+      [
+        "fmt_cards"
+      ]
+    ]
+  },
+  {
+    "id": "fmt_cards",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "cards response",
+    "func": "msg.statusCode=200;msg.payload=msg.payload||[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 190,
+    "wires": [
+      [
+        "out_cards"
+      ]
+    ]
+  },
+  {
+    "id": "out_cards",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_cards",
+    "statusCode": "",
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "in_summary",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_summary",
+    "url": "/api/summary",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 300,
+    "wires": [
+      [
+        "prep_summary"
+      ]
+    ]
+  },
+  {
+    "id": "prep_summary",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "summary SQL",
+    "func": "msg.topic=\"SELECT (SELECT COUNT(*) FROM parking_sessions WHERE status='inside') inside,(SELECT COUNT(*) FROM access_events WHERE gate_id='entry' AND decision='accepted' AND date(created_at)=date('now')) entries_today,(SELECT COUNT(*) FROM access_events WHERE gate_id='exit' AND decision='accepted' AND date(created_at)=date('now')) exits_today,(SELECT COUNT(*) FROM rfid_cards WHERE is_active=1) active_cards\";msg.payload=[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 300,
+    "wires": [
+      [
+        "sql_summary"
+      ]
+    ]
+  },
+  {
+    "id": "sql_summary",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "summary",
+    "x": 770,
+    "y": 300,
+    "wires": [
+      [
+        "fmt_summary"
+      ]
+    ]
+  },
+  {
+    "id": "fmt_summary",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "summary response",
+    "func": "msg.statusCode=200;msg.payload=msg.payload?.[0]||{};return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 300,
+    "wires": [
+      [
+        "out_summary"
+      ]
+    ]
+  },
+  {
+    "id": "out_summary",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_summary",
+    "statusCode": "",
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 330,
+    "wires": []
+  },
+  {
+    "id": "in_history",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_history",
+    "url": "/api/history",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 410,
+    "wires": [
+      [
+        "prep_history"
+      ]
+    ]
+  },
+  {
+    "id": "prep_history",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "history SQL",
+    "func": "msg.topic=\"SELECT s.card_uid,c.owner_name,s.vehicle_plate,s.entry_at,s.exit_at,s.status FROM parking_sessions s LEFT JOIN rfid_cards c ON c.uid=s.card_uid ORDER BY s.entry_at DESC LIMIT 100\";msg.payload=[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 410,
+    "wires": [
+      [
+        "sql_history"
+      ]
+    ]
+  },
+  {
+    "id": "sql_history",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "history",
+    "x": 770,
+    "y": 410,
+    "wires": [
+      [
+        "fmt_history"
+      ]
+    ]
+  },
+  {
+    "id": "fmt_history",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "history response",
+    "func": "msg.statusCode=200;msg.payload=msg.payload||[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 410,
+    "wires": [
+      [
+        "out_history"
+      ]
+    ]
+  },
+  {
+    "id": "out_history",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_history",
+    "statusCode": "",
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 440,
+    "wires": []
+  },
+  {
+    "id": "in_gates",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_gates",
+    "url": "/api/gates",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 520,
+    "wires": [
+      [
+        "prep_gates"
+      ]
+    ]
+  },
+  {
+    "id": "prep_gates",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "gates SQL",
+    "func": "msg.topic=\"SELECT * FROM gate_status ORDER BY gate_id\";msg.payload=[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 520,
+    "wires": [
+      [
+        "sql_gates"
+      ]
+    ]
+  },
+  {
+    "id": "sql_gates",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "gates",
+    "x": 770,
+    "y": 520,
+    "wires": [
+      [
+        "fmt_gates"
+      ]
+    ]
+  },
+  {
+    "id": "fmt_gates",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "gates response",
+    "func": "msg.statusCode=200;msg.payload=msg.payload||[];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 520,
+    "wires": [
+      [
+        "out_gates"
+      ]
+    ]
+  },
+  {
+    "id": "out_gates",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_gates",
+    "statusCode": "",
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 550,
+    "wires": []
+  },
+  {
+    "id": "in_dashboard",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_dashboard",
+    "url": "/parking",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 630,
+    "wires": [
+      [
+        "template_dashboard"
+      ]
+    ]
+  },
+  {
+    "id": "template_dashboard",
+    "type": "template",
+    "z": "sp_tab",
+    "name": "Dashboard UI",
+    "field": "payload",
+    "fieldType": "msg",
+    "format": "handlebars",
+    "syntax": "mustache",
+    "template": "<!doctype html><html lang=\"id\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Smart Parking</title><style>body{margin:0;background:#0b1220;color:#e8eef8;font:15px system-ui}.wrap{max-width:1200px;margin:auto;padding:25px}.muted{color:#91a0b7}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:20px 0}.panel,.metric{background:#111c2e;border:1px solid #26364d;border-radius:14px;padding:17px}.num{font-size:30px;font-weight:800}.gates{display:grid;grid-template-columns:1fr 1fr;gap:12px}button{background:#2563eb;color:white;border:0;border-radius:8px;padding:10px 14px;margin:4px;cursor:pointer}.secondary{background:#34445d}input{display:block;width:95%;padding:10px;margin:7px 0 12px;background:#0b1525;border:1px solid #34445d;border-radius:8px;color:white}table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid #26364d;font-size:13px}.scroll{overflow:auto}@media(max-width:750px){.grid{grid-template-columns:repeat(2,1fr)}.gates{grid-template-columns:1fr}}@media(max-width:480px){.wrap{padding:13px}}</style><main class=\"wrap\"><header><h2>▦ SMART PARKING</h2><p class=\"muted\">RFID access · gate monitoring · parking operations <span id=\"conn\">Connecting…</span></p></header><section class=\"grid\"><div class=\"metric\">Kendaraan di dalam<div class=\"num\" id=\"inside\">—</div></div><div class=\"metric\">Masuk hari ini<div class=\"num\" id=\"ent\">—</div></div><div class=\"metric\">Keluar hari ini<div class=\"num\" id=\"ext\">—</div></div><div class=\"metric\">Kartu aktif<div class=\"num\" id=\"cardsN\">—</div></div></section><section class=\"panel\"><h3>Monitoring palang</h3><div class=\"gates\"><div><b>ENTRY</b><p id=\"entryState\">Unknown</p><button onclick=\"gate('entry','OPEN')\">Buka</button><button class=\"secondary\" onclick=\"gate('entry','CLOSE')\">Tutup</button></div><div><b>EXIT</b><p id=\"exitState\">Unknown</p><button onclick=\"gate('exit','OPEN')\">Buka</button><button class=\"secondary\" onclick=\"gate('exit','CLOSE')\">Tutup</button></div></div><small class=\"muted\">Status berdasarkan laporan ESP32, bukan sensor posisi palang.</small></section><section class=\"gates\" style=\"margin-top:14px\"><div class=\"panel\"><h3>Riwayat parkir</h3><div class=\"scroll\"><table><thead><tr><th>UID</th><th>Plat</th><th>Masuk</th><th>Keluar</th><th>Status</th></tr></thead><tbody id=\"history\"></tbody></table></div></div><div class=\"panel\"><h3>Daftarkan kartu</h3><form id=\"reg\"><label>UID RFID</label><input name=\"uid\" required pattern=\"[A-Fa-f0-9]{4,32}\" placeholder=\"A1B2C3D4\"><label>Nama pemilik</label><input name=\"owner_name\" required><label>Nomor kendaraan</label><input name=\"vehicle_plate\"><button>Simpan kartu</button></form><p id=\"notice\" class=\"muted\"></p><h3>Kartu terdaftar</h3><div class=\"scroll\"><table><thead><tr><th>UID</th><th>Pemilik</th><th>Plat</th><th>Status</th></tr></thead><tbody id=\"cardRows\"></tbody></table></div></div></section><p class=\"muted\">Prototype akademik. Gunakan pada LAN pengembangan.</p></main><script>const $=id=>document.getElementById(id),api=async(u,o={})=>{let r=await fetch(u,{headers:{'Content-Type':'application/json'},...o}),d=await r.json();if(!r.ok)throw Error(d.error||'Request gagal');return d},fmt=v=>v?new Date(v).toLocaleString('id-ID',{timeZone:'Asia/Jakarta'}):'—';async function refresh(){try{let [s,g,h,c]=await Promise.all(['/api/summary','/api/gates','/api/history','/api/cards'].map(api));$('conn').textContent='● API online';$('inside').textContent=s.inside;$('ent').textContent=s.entries_today;$('ext').textContent=s.exits_today;$('cardsN').textContent=s.active_cards;g.forEach(x=>$(x.gate_id+'State').textContent=(x.connected?'Online':'Offline')+' · '+x.reported_state);$('history').innerHTML=h.map(x=>'<tr><td>'+x.card_uid+'</td><td>'+(x.vehicle_plate||'—')+'</td><td>'+fmt(x.entry_at)+'</td><td>'+fmt(x.exit_at)+'</td><td>'+x.status+'</td></tr>').join('');$('cardRows').innerHTML=c.map(x=>'<tr><td>'+x.uid+'</td><td>'+x.owner_name+'</td><td>'+(x.vehicle_plate||'—')+'</td><td>'+(x.is_active?'Aktif':'Nonaktif')+'</td></tr>').join('')}catch(e){$('conn').textContent='● API offline'}}async function gate(g,c){if(!confirm('Kirim '+c+' ke '+g+'?'))return;try{await api('/api/gates/command',{method:'POST',body:JSON.stringify({gate_id:g,command:c,source:'dashboard'})});alert('Perintah dicatat, menunggu perangkat.')}catch(e){alert(e.message)}}$('reg').onsubmit=async e=>{e.preventDefault();try{await api('/api/cards/register',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});$('notice').textContent='Kartu tersimpan';e.target.reset();refresh()}catch(x){$('notice').textContent=x.message}};refresh();setInterval(refresh,3000)</script></html>",
+    "output": "str",
+    "x": 480,
+    "y": 630,
+    "wires": [
+      [
+        "out_dashboard"
+      ]
+    ]
+  },
+  {
+    "id": "out_dashboard",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_dashboard",
+    "statusCode": "",
+    "headers": {
+      "content-type": "text/html; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 660,
+    "wires": []
+  },
+  {
+    "id": "in_register",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_register",
+    "url": "/api/cards/register",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 760,
+    "wires": [
+      [
+        "validate_register"
+      ]
+    ]
+  },
+  {
+    "id": "validate_register",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Validate and insert card",
+    "func": "const b=msg.payload||{},uid=String(b.uid||'').replace(/\\\\s/g,'').toUpperCase(),owner=String(b.owner_name||'').trim(),plate=String(b.vehicle_plate||'').trim().toUpperCase();if(!/^[A-F0-9]{4,32}$/.test(uid)||!owner){msg.statusCode=400;msg.payload={ok:false,error:'UID hex 4-32 karakter dan nama wajib diisi'};return [null,msg]}msg.topic='INSERT INTO rfid_cards(uid,owner_name,vehicle_plate,is_active) VALUES(?,?,?,1)';msg.payload=[uid,owner,plate||null];return [msg,null];",
     "outputs": 2,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 390,
-    "y": 200,
+    "x": 480,
+    "y": 760,
     "wires": [
       [
-        "sqlite_insert"
+        "sql_register"
+      ],
+      [
+        "out_register"
+      ]
+    ]
+  },
+  {
+    "id": "sql_register",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Insert card",
+    "x": 770,
+    "y": 760,
+    "wires": [
+      [
+        "format_register"
+      ]
+    ]
+  },
+  {
+    "id": "format_register",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Registration result",
+    "func": "msg.statusCode=201;msg.payload={ok:true,message:'Card registered'};return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 760,
+    "wires": [
+      [
+        "out_register"
+      ]
+    ]
+  },
+  {
+    "id": "out_register",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_register",
+    "statusCode": "",
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 790,
+    "wires": []
+  },
+  {
+    "id": "in_scan",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_scan",
+    "url": "/api/rfid/scan",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 900,
+    "wires": [
+      [
+        "validate_scan"
+      ]
+    ]
+  },
+  {
+    "id": "validate_scan",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Validate and record RFID scan",
+    "func": "const b=msg.payload||{},gate=String(b.gate_id||'').toLowerCase(),uid=String(b.uid||'').replace(/\\\\s/g,'').toUpperCase();if(!['entry','exit'].includes(gate)||!/^[A-F0-9]{4,32}$/.test(uid)){msg.statusCode=400;msg.payload={ok:false,error:'gate_id entry/exit dan UID hex 4-32 karakter wajib'};return [null,msg]}msg.scan={gate,uid,request:'http-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)};msg.topic='INSERT INTO access_events(request_id,gate_id,card_uid,created_at) VALUES(?,?,?,?)';msg.payload=[msg.scan.request,gate,uid,new Date().toISOString()];return [msg,null];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 900,
+    "wires": [
+      [
+        "sql_scan"
       ],
       [
         "out_scan"
@@ -93,92 +622,431 @@
     ]
   },
   {
-    "id": "sqlite_config",
-    "type": "sqlitedb",
-    "db": "./data/parking.db",
-    "mode": "RWC",
-    "name": "Smart Parking SQLite"
-  },
-  {
-    "id": "sqlite_insert",
+    "id": "sql_scan",
     "type": "sqlite",
-    "z": "tab_parking",
-    "mydb": "sqlite_config",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
     "sqlquery": "msg.topic",
     "sql": "",
-    "name": "Insert RFID event",
-    "x": 640,
-    "y": 180,
+    "name": "Insert scan / trigger sessions",
+    "x": 770,
+    "y": 900,
     "wires": [
       [
-        "fn_success"
+        "prep_result"
       ]
     ]
   },
   {
-    "id": "fn_success",
+    "id": "prep_result",
     "type": "function",
-    "z": "tab_parking",
-    "name": "Build success response",
-    "func": "msg.statusCode = 201;\nmsg.payload = { ok: true, message: \"RFID scan recorded\", gate_id: msg.scan.gate_id, uid: msg.scan.uid, timestamp: msg.scan.timestamp, note: \"A scan event does not confirm that a vehicle physically passed the gate.\" };\nreturn msg;",
+    "z": "sp_tab",
+    "name": "Read scan decision",
+    "func": "msg.topic='SELECT e.decision,e.reason,e.command_id,e.created_at,e.card_uid,c.owner_name FROM access_events e LEFT JOIN rfid_cards c ON c.uid=e.card_uid WHERE e.request_id=?';msg.payload=[msg.scan.request];return msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 880,
-    "y": 180,
+    "x": 480,
+    "y": 900,
+    "wires": [
+      [
+        "sql_result"
+      ]
+    ]
+  },
+  {
+    "id": "sql_result",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Read scan result",
+    "x": 770,
+    "y": 900,
+    "wires": [
+      [
+        "format_result"
+      ]
+    ]
+  },
+  {
+    "id": "format_result",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "HTTP result and MQTT command",
+    "func": "const r=msg.payload&&msg.payload[0];if(!r){msg.statusCode=500;msg.payload={ok:false,error:'Scan result missing'};return [msg,null]}msg.statusCode=r.decision==='accepted'?200:403;msg.payload={ok:r.decision==='accepted',decision:r.decision,reason:r.reason,uid:r.card_uid,owner_name:r.owner_name,command_id:r.command_id,timestamp:r.created_at};if(r.decision!=='accepted'||!r.command_id)return [msg,null];return [msg,{topic:'parking/'+msg.scan.gate+'/command',payload:JSON.stringify({command_id:String(r.command_id),command:'OPEN',gate_id:msg.scan.gate}),qos:1,retain:false}];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 900,
     "wires": [
       [
         "out_scan"
+      ],
+      [
+        "mqtt_out"
       ]
     ]
   },
   {
     "id": "out_scan",
     "type": "http response",
-    "z": "tab_parking",
-    "name": "Return scan result",
+    "z": "sp_tab",
+    "name": "out_scan",
     "statusCode": "",
-    "headers": {},
-    "x": 1110,
-    "y": 260,
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 930,
     "wires": []
   },
   {
-    "id": "catch_db",
-    "type": "catch",
-    "z": "tab_parking",
-    "name": "Catch SQLite errors",
-    "scope": [
-      "sqlite_insert"
-    ],
-    "uncaught": false,
-    "x": 640,
-    "y": 340,
+    "id": "mqtt_in_entry",
+    "type": "mqtt in",
+    "z": "sp_tab",
+    "name": "Entry RFID",
+    "topic": "parking/entry/rfid",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqttbroker",
+    "nl": false,
+    "rap": true,
+    "rp": false,
+    "inputs": 0,
+    "x": 140,
+    "y": 1040,
     "wires": [
       [
-        "fn_error"
+        "mqtt_scan_prep"
       ]
     ]
   },
   {
-    "id": "fn_error",
+    "id": "mqtt_in_exit",
+    "type": "mqtt in",
+    "z": "sp_tab",
+    "name": "Exit RFID",
+    "topic": "parking/exit/rfid",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqttbroker",
+    "nl": false,
+    "rap": true,
+    "rp": false,
+    "inputs": 0,
+    "x": 140,
+    "y": 1100,
+    "wires": [
+      [
+        "mqtt_scan_prep"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_scan_prep",
     "type": "function",
-    "z": "tab_parking",
-    "name": "Build database error response",
-    "func": "msg.statusCode = 500;\nmsg.payload = { ok: false, error: \"Database operation failed\" };\nreturn msg;",
+    "z": "sp_tab",
+    "name": "Prepare MQTT RFID event",
+    "func": "let b=msg.payload;if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){return null}}const gate=String(b.gate_id||msg.topic.split('/')[1]),uid=String(b.uid||'').replace(/\\\\s/g,'').toUpperCase();if(!['entry','exit'].includes(gate)||!/^[A-F0-9]{4,32}$/.test(uid))return null;msg.scan={gate,uid,request:'mqtt-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)};msg.topic='INSERT INTO access_events(request_id,gate_id,card_uid,created_at) VALUES(?,?,?,?)';msg.payload=[msg.scan.request,gate,uid,new Date().toISOString()];return msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
     "finalize": "",
     "libs": [],
-    "x": 880,
-    "y": 340,
+    "x": 480,
+    "y": 1070,
     "wires": [
       [
-        "out_scan"
+        "mqtt_scan_sql"
       ]
     ]
+  },
+  {
+    "id": "mqtt_scan_sql",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Save MQTT RFID event",
+    "x": 770,
+    "y": 1070,
+    "wires": [
+      [
+        "mqtt_result_prep"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_result_prep",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Read MQTT decision",
+    "func": "msg.topic='SELECT decision,command_id FROM access_events WHERE request_id=?';msg.payload=[msg.scan.request];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 1070,
+    "wires": [
+      [
+        "mqtt_result_sql"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_result_sql",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Read MQTT decision",
+    "x": 770,
+    "y": 1070,
+    "wires": [
+      [
+        "mqtt_decision"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_decision",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Publish accepted gate command",
+    "func": "const r=msg.payload&&msg.payload[0];if(!r||r.decision!=='accepted'||!r.command_id)return null;msg.topic='parking/'+msg.scan.gate+'/command';msg.payload=JSON.stringify({command_id:String(r.command_id),command:'OPEN',gate_id:msg.scan.gate});msg.qos=1;msg.retain=false;return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 1070,
+    "wires": [
+      [
+        "mqtt_out"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out",
+    "type": "mqtt out",
+    "z": "sp_tab",
+    "name": "Publish gate command",
+    "topic": "",
+    "qos": "1",
+    "retain": "false",
+    "broker": "mqttbroker",
+    "x": 1160,
+    "y": 1100,
+    "wires": []
+  },
+  {
+    "id": "in_manual",
+    "type": "http in",
+    "z": "sp_tab",
+    "name": "in_manual",
+    "url": "/api/gates/command",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 1210,
+    "wires": [
+      [
+        "prep_manual"
+      ]
+    ]
+  },
+  {
+    "id": "prep_manual",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Validate manual command",
+    "func": "const b=msg.payload||{},gate=String(b.gate_id||''),command=String(b.command||'').toUpperCase();if(!['entry','exit'].includes(gate)||!['OPEN','CLOSE'].includes(command)){msg.statusCode=400;msg.payload={ok:false,error:'Invalid gate or command'};return [null,msg]}msg.manual={gate,command,id:'manual-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),source:String(b.source||'dashboard')};msg.topic='INSERT INTO gate_commands(command_id,gate_id,command,source,status,requested_at) VALUES(?,?,?,?,\\'sent\\',?)';msg.payload=[msg.manual.id,gate,command,msg.manual.source,new Date().toISOString()];return [msg,null];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 1210,
+    "wires": [
+      [
+        "manual_sql"
+      ],
+      [
+        "out_manual"
+      ]
+    ]
+  },
+  {
+    "id": "manual_sql",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Record manual command",
+    "x": 770,
+    "y": 1210,
+    "wires": [
+      [
+        "manual_format"
+      ]
+    ]
+  },
+  {
+    "id": "manual_format",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Publish manual command",
+    "func": "msg.statusCode=202;msg.payload={ok:true,command_id:msg.manual.id,status:'sent_to_broker'};return [msg,{topic:'parking/'+msg.manual.gate+'/command',payload:JSON.stringify({command_id:msg.manual.id,command:msg.manual.command,gate_id:msg.manual.gate}),qos:1,retain:false}];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 1210,
+    "wires": [
+      [
+        "out_manual"
+      ],
+      [
+        "mqtt_out"
+      ]
+    ]
+  },
+  {
+    "id": "out_manual",
+    "type": "http response",
+    "z": "sp_tab",
+    "name": "out_manual",
+    "statusCode": "",
+    "headers": {
+      "content-type": "application/json; charset=utf-8"
+    },
+    "x": 1160,
+    "y": 1240,
+    "wires": []
+  },
+  {
+    "id": "mqtt_status_in",
+    "type": "mqtt in",
+    "z": "sp_tab",
+    "name": "Device telemetry",
+    "topic": "parking/+/status",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqttbroker",
+    "nl": false,
+    "rap": true,
+    "rp": false,
+    "inputs": 0,
+    "x": 140,
+    "y": 1370,
+    "wires": [
+      [
+        "status_prep"
+      ]
+    ]
+  },
+  {
+    "id": "status_prep",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Parse device status",
+    "func": "let b=msg.payload;if(typeof b==='string'){try{b=JSON.parse(b)}catch(e){return null}}const gate=String(b.gate_id||msg.topic.split('/')[1]),state=String(b.state||'unknown').toLowerCase();if(!['entry','exit'].includes(gate)||!['open','closed','moving','unknown'].includes(state))return null;msg.topic='INSERT INTO gate_status(gate_id,reported_state,connected,last_seen_at,last_device_id) VALUES(?,?,1,?,?) ON CONFLICT(gate_id) DO UPDATE SET reported_state=excluded.reported_state,connected=1,last_seen_at=excluded.last_seen_at,last_device_id=excluded.last_device_id';msg.payload=[gate,state,new Date().toISOString(),b.device_id||'ESP32'];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 1370,
+    "wires": [
+      [
+        "status_sql"
+      ]
+    ]
+  },
+  {
+    "id": "status_sql",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Update device state",
+    "x": 770,
+    "y": 1370,
+    "wires": [
+      [
+        "ack_prep"
+      ]
+    ]
+  },
+  {
+    "id": "ack_prep",
+    "type": "function",
+    "z": "sp_tab",
+    "name": "Update command acknowledgement",
+    "func": "let b=msg.payload;if(!b||!b.command_id)return null;msg.topic='UPDATE gate_commands SET status=?,acknowledged_at=?,result=? WHERE command_id=?';msg.payload=[b.result==='EXECUTED'?'executed':b.result==='FAILED'?'failed':'sent',new Date().toISOString(),b.result||'STATUS',b.command_id];return msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 480,
+    "y": 1370,
+    "wires": [
+      [
+        "ack_sql"
+      ]
+    ]
+  },
+  {
+    "id": "ack_sql",
+    "type": "sqlite",
+    "z": "sp_tab",
+    "mydb": "dbconfig",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Record device acknowledgement",
+    "x": 770,
+    "y": 1370,
+    "wires": [
+      [
+        "debug_ack"
+      ]
+    ]
+  },
+  {
+    "id": "debug_ack",
+    "type": "debug",
+    "z": "sp_tab",
+    "name": "Telemetry DB result",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "false",
+    "targetType": "msg",
+    "statusVal": "",
+    "statusType": "auto",
+    "x": 1160,
+    "y": 1370,
+    "wires": []
   }
 ]
