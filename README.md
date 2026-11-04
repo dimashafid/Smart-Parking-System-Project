@@ -54,7 +54,7 @@ Rancangan arsitektur sistem:
 ```mermaid
 flowchart TB
     UI[Web Dashboard]
-    API[Backend API]
+    NR[Node-RED Runtime]
     DB[(SQLite Database)]
     SIM[Virtual Device Simulator]
     subgraph Hardware
@@ -67,11 +67,11 @@ flowchart TB
       B1[Buzzer - Entry]
       B2[Buzzer - Exit]
     end
-    UI <-->|HTTP / WebSocket| API
-    API <--> DB
-    SIM <-->|Device API| API
-    E1 <-->|Device communication| API
-    E2 <-->|Device communication| API
+    UI <-->|HTTP| NR[Node-RED]
+    NR <--> DB
+    SIM <-->|HTTP / MQTT (planned)| NR
+    E1 <-->|HTTP / MQTT (to be finalized)| NR
+    E2 <-->|HTTP / MQTT (to be finalized)| NR
     R1 --> E1
     R2 --> E2
     E1 --> A1
@@ -96,7 +96,7 @@ The virtual simulator and physical ESP32 devices are intended to use the same ba
 | Communication | REST API + WebSocket (proposed) | Device and dashboard communication |
 | Simulator | Software-based virtual device | Hardware-independent testing |
 
-The software stack is a proposed implementation and may be adjusted during development.
+The current implementation direction uses Node-RED. The exact ESP32 transport (MQTT or HTTP) and dashboard package/version will be finalized during integration.
 
 ## Hardware Components
 
@@ -190,7 +190,7 @@ The application is not yet ready to run. Installation and execution instructions
 
 ## Documentation
 
-- [System Architecture](docs/ARCHITECTURE.md)
+- [System Architecture](docs/ARCHITECTURE.md)\n- [Node-RED Integration](docs/NODE_RED.md)\n- [Node-RED Setup and API](node-red/README.md)
 - [Database Design](docs/DATABASE.md)
 - [Development Roadmap](docs/ROADMAP.md)
 
