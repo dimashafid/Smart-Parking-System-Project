@@ -1,71 +1,23 @@
-# Node-RED Integration
+# Node-RED Smart Parking
 
-Folder ini berisi integrasi awal Node-RED untuk Smart Parking System.
-
-## Fitur pada tahap awal
-
-- POST /api/rfid/scan menerima UID kartu dan gate_id, lalu mencatat hasil pemindaian ke SQLite.
-- GET /api/health memeriksa apakah flow HTTP Node-RED aktif.
-- Skema database tersedia pada sql/schema.sql.
-- Flow yang dapat diimpor tersedia pada flows/parking-system.json.
-
-Flow ini belum melakukan validasi kartu terdaftar, membuka palang fisik, atau membuat dan menutup sesi parkir. Fitur tersebut akan ditambahkan setelah protokol perangkat dan aturan transaksi disepakati.
-
-## Persyaratan
-
-- Node.js 18 atau lebih baru
-- Node-RED 4.x
-- Node-RED SQLite node: node-red-node-sqlite
-
-## Instalasi
-
-Jalankan dari folder node-red:
-
+## Install
+From this folder run:
 ```bash
 npm install
 mkdir -p data
 sqlite3 data/parking.db < sql/schema.sql
 npm start
 ```
-
-Jika SQLite CLI belum tersedia, jalankan isi sql/schema.sql satu kali melalui aplikasi pengelola SQLite.
-
-Buka editor Node-RED pada http://localhost:1880. Pilih Menu → Import, lalu impor flows/parking-system.json. Pada konfigurasi SQLite, atur lokasi database ke path absolut node-red/data/parking.db di komputer yang menjalankan Node-RED. Setelah itu tekan Deploy.
+Import `flows/parking-system.json` from Node-RED Menu → Import. Set SQLite database path to the absolute path of `node-red/data/parking.db`. Configure MQTT broker node (default localhost:1883). Deploy. Dashboard: http://localhost:1880/parking.
 
 ## API
+GET /api/health, /api/cards, /api/summary, /api/history, /api/gates. POST /api/cards/register with `{uid,owner_name,vehicle_plate}`. POST /api/rfid/scan with `{gate_id,uid}`. POST /api/gates/command with `{gate_id,command,source}`.
 
-### Pemeriksaan layanan
+## Rules
+SQLite trigger validates registered active cards, prevents duplicate open sessions, creates entry sessions, closes exit sessions, rejects invalid exits and records an OPEN command for accepted scans. The Node-RED flow publishes accepted commands via MQTT. Device status is ingested from parking/+/status.
 
-```http
-GET http://localhost:1880/api/health
-```
+## MQTT
+ESP32 publishes to parking/entry/rfid or parking/exit/rfid; subscribes to parking/{entry,exit}/command; publishes status to parking/{entry,exit}/status. Broker defaults localhost:1883.
 
-### Mencatat pemindaian RFID
-
-```http
-POST http://localhost:1880/api/rfid/scan
-Content-Type: application/json
-
-{
-  "gate_id": "entry",
-  "uid": "A1B2C3D4"
-}
-```
-
-gate_id hanya menerima entry atau exit. UID dinormalisasi menjadi huruf kapital.
-
-Contoh pengujian:
-
-```bash
-curl -X POST http://localhost:1880/api/rfid/scan \
-  -H "Content-Type: application/json" \
-  -d '{"gate_id":"entry","uid":"A1B2C3D4"}'
-```
-
-## Catatan keamanan dan batasan
-
-- Query SQL menggunakan parameter agar input UID tidak digabung langsung ke string SQL.
-- API tahap awal belum memakai autentikasi dan hanya ditujukan untuk jaringan pengembangan lokal. Jangan membuka port 1880 langsung ke internet.
-- Pemindaian RFID bukan bukti kendaraan telah melewati palang.
-- Status palang fisik hanya boleh dianggap terverifikasi setelah ESP32 mengirimkan konfirmasi status.
-- File database pada folder data merupakan data runtime dan tidak perlu di-commit ke Git.
+## Limitations
+No dashboard authentication/TLS. UID is not cryptographic authentication. RFID scan does not prove vehicle passage. Firmware status is not physical position feedback; install limit switches and obstruction detection and a physical emergency stop before real barrier use. Restrict Node-RED/MQTT to a trusted LAN.
