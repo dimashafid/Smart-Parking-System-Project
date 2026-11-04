@@ -1,62 +1,20 @@
-PRAGMA foreign_keys = ON;
-
-CREATE TABLE IF NOT EXISTS rfid_cards (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    uid TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    owner_name TEXT,
-    vehicle_plate TEXT,
-    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
-    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-);
-
-CREATE TABLE IF NOT EXISTS access_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    gate_id TEXT NOT NULL CHECK (gate_id IN ('entry', 'exit')),
-    card_uid TEXT NOT NULL,
-    event_type TEXT NOT NULL DEFAULT 'rfid_scan',
-    created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS parking_sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_uid TEXT NOT NULL,
-    vehicle_plate TEXT,
-    entry_gate TEXT NOT NULL DEFAULT 'entry',
-    entry_at TEXT NOT NULL,
-    exit_gate TEXT,
-    exit_at TEXT,
-    status TEXT NOT NULL DEFAULT 'inside'
-        CHECK (status IN ('inside', 'completed', 'invalid')),
-    CHECK ((status = 'inside' AND exit_at IS NULL) OR
-           (status = 'completed' AND exit_at IS NOT NULL) OR
-           status = 'invalid')
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_one_open_session_per_card
-    ON parking_sessions(card_uid) WHERE status = 'inside';
-
-CREATE INDEX IF NOT EXISTS idx_access_events_created_at
-    ON access_events(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_parking_sessions_status
-    ON parking_sessions(status);
-
-CREATE TABLE IF NOT EXISTS gate_status (
-    gate_id TEXT PRIMARY KEY CHECK (gate_id IN ('entry', 'exit')),
-    reported_state TEXT NOT NULL DEFAULT 'unknown'
-        CHECK (reported_state IN ('open', 'closed', 'moving', 'unknown')),
-    connected INTEGER NOT NULL DEFAULT 0 CHECK (connected IN (0, 1)),
-    last_seen_at TEXT
-);
-
-INSERT OR IGNORE INTO gate_status (gate_id) VALUES ('entry'), ('exit');
-
-CREATE TABLE IF NOT EXISTS gate_commands (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    gate_id TEXT NOT NULL CHECK (gate_id IN ('entry', 'exit')),
-    command TEXT NOT NULL CHECK (command IN ('open', 'close')),
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'acknowledged', 'failed', 'timeout')),
-    requested_at TEXT NOT NULL,
-    acknowledged_at TEXT
-);
+PRAGMA foreign_keys=ON;
+CREATE TABLE IF NOT EXISTS rfid_cards(id INTEGER PRIMARY KEY AUTOINCREMENT,uid TEXT NOT NULL UNIQUE COLLATE NOCASE,owner_name TEXT NOT NULL,vehicle_plate TEXT,is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN(0,1)),created_at TEXT NOT NULL DEFAULT(strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+CREATE TABLE IF NOT EXISTS parking_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,card_uid TEXT NOT NULL,vehicle_plate TEXT,entry_at TEXT NOT NULL,exit_at TEXT,status TEXT NOT NULL DEFAULT 'inside' CHECK(status IN('inside','completed')),entry_event_id INTEGER NOT NULL UNIQUE,exit_event_id INTEGER UNIQUE);
+CREATE UNIQUE INDEX IF NOT EXISTS one_open_session_per_card ON parking_sessions(card_uid) WHERE status='inside';
+CREATE TABLE IF NOT EXISTS access_events(id INTEGER PRIMARY KEY AUTOINCREMENT,request_id TEXT NOT NULL UNIQUE,gate_id TEXT NOT NULL CHECK(gate_id IN('entry','exit')),card_uid TEXT NOT NULL,created_at TEXT NOT NULL,decision TEXT NOT NULL DEFAULT 'pending' CHECK(decision IN('pending','accepted','rejected')),reason TEXT,command_id INTEGER);
+CREATE INDEX IF NOT EXISTS events_created ON access_events(created_at DESC);
+CREATE TABLE IF NOT EXISTS gate_status(gate_id TEXT PRIMARY KEY CHECK(gate_id IN('entry','exit')),reported_state TEXT NOT NULL DEFAULT 'unknown' CHECK(reported_state IN('open','closed','moving','unknown')),connected INTEGER NOT NULL DEFAULT 0 CHECK(connected IN(0,1)),last_seen_at TEXT,last_device_id TEXT);
+INSERT OR IGNORE INTO gate_status(gate_id) VALUES('entry'),('exit');
+CREATE TABLE IF NOT EXISTS gate_commands(id INTEGER PRIMARY KEY AUTOINCREMENT,command_id TEXT NOT NULL UNIQUE,gate_id TEXT NOT NULL CHECK(gate_id IN('entry','exit')),command TEXT NOT NULL CHECK(command IN('OPEN','CLOSE')),source TEXT NOT NULL DEFAULT 'system',status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN('pending','sent','executed','failed')),requested_at TEXT NOT NULL,acknowledged_at TEXT,result TEXT);
+CREATE TRIGGER IF NOT EXISTS process_rfid_event AFTER INSERT ON access_events BEGIN
+ UPDATE access_events SET decision='rejected',reason='card_not_found' WHERE id=NEW.id AND NOT EXISTS(SELECT 1 FROM rfid_cards WHERE uid=NEW.card_uid AND is_active=1);
+ UPDATE access_events SET decision='rejected',reason='already_inside' WHERE id=NEW.id AND NEW.gate_id='entry' AND EXISTS(SELECT 1 FROM rfid_cards WHERE uid=NEW.card_uid AND is_active=1) AND EXISTS(SELECT 1 FROM parking_sessions WHERE card_uid=NEW.card_uid AND status='inside');
+ INSERT INTO parking_sessions(card_uid,vehicle_plate,entry_at,entry_event_id) SELECT uid,vehicle_plate,NEW.created_at,NEW.id FROM rfid_cards WHERE NEW.gate_id='entry' AND uid=NEW.card_uid AND is_active=1 AND NOT EXISTS(SELECT 1 FROM parking_sessions WHERE card_uid=NEW.card_uid AND status='inside');
+ UPDATE access_events SET decision='accepted',reason='entry_accepted' WHERE id=NEW.id AND NEW.gate_id='entry' AND EXISTS(SELECT 1 FROM parking_sessions WHERE entry_event_id=NEW.id);
+ UPDATE parking_sessions SET exit_at=NEW.created_at,status='completed',exit_event_id=NEW.id WHERE NEW.gate_id='exit' AND card_uid=NEW.card_uid AND status='inside' AND EXISTS(SELECT 1 FROM rfid_cards WHERE uid=NEW.card_uid AND is_active=1);
+ UPDATE access_events SET decision='accepted',reason='exit_accepted' WHERE id=NEW.id AND NEW.gate_id='exit' AND EXISTS(SELECT 1 FROM parking_sessions WHERE exit_event_id=NEW.id);
+ UPDATE access_events SET decision='rejected',reason='no_active_session' WHERE id=NEW.id AND NEW.gate_id='exit' AND decision='pending';
+ INSERT INTO gate_commands(command_id,gate_id,command,source,requested_at) SELECT lower(hex(randomblob(16))),NEW.gate_id,'OPEN','rfid',NEW.created_at WHERE EXISTS(SELECT 1 FROM access_events WHERE id=NEW.id AND decision='accepted');
+ UPDATE access_events SET command_id=(SELECT id FROM gate_commands WHERE requested_at=NEW.created_at AND gate_id=NEW.gate_id AND source='rfid' ORDER BY id DESC LIMIT 1) WHERE id=NEW.id AND decision='accepted';
+END;
