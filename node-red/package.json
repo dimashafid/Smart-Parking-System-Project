@@ -1,0 +1,11 @@
+{
+  "name": "smart-parking-node-red",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node-RED flows for the Smart Parking System",
+  "scripts": { "start": "node-red -u ." },
+  "dependencies": {
+    "node-red": "^4.0.0",
+    "node-red-node-sqlite": "^1.1.0"
+  }
+}
