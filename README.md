@@ -18,7 +18,7 @@ Sistem dirancang dengan dua jalur terpisah, yaitu **gerbang masuk (entry gate)**
 
 Proyek ini juga menyediakan rancangan kendali manual melalui dashboard untuk kebutuhan operasional atau keadaan darurat. Perintah dari dashboard diteruskan ke perangkat dan status gerbang diperbarui berdasarkan konfirmasi perangkat.
 
-> **Project status:** In development. Repository ini sedang disiapkan untuk pengembangan bertahap, dimulai dari dokumentasi, simulasi perangkat, backend, database, dashboard, kemudian integrasi hardware.
+> **Project status:** In development. Repository ini sedang disiapkan untuk pengembangan bertahap, dimulai dari dokumentasi dan flow Node-RED, dilanjutkan database, dashboard, simulasi perangkat, kemudian integrasi hardware.
 
 ## Objectives
 
@@ -67,7 +67,7 @@ flowchart TB
       B1[Buzzer - Entry]
       B2[Buzzer - Exit]
     end
-    UI <-->|HTTP| NR[Node-RED]
+    UI <-->|HTTP| NR
     NR <--> DB
     SIM <-->|HTTP / MQTT (planned)| NR
     E1 <-->|HTTP / MQTT (to be finalized)| NR
@@ -80,7 +80,7 @@ flowchart TB
     E2 --> B2
 ```
 
-The virtual simulator and physical ESP32 devices are intended to use the same backend communication interface. This allows the dashboard and database to be developed and tested before the hardware integration is complete.
+The virtual simulator and physical ESP32 devices are intended to use the same Node-RED communication interface. This allows the dashboard and database to be developed and tested before the hardware integration is complete.
 
 ## Proposed Technology Stack
 
@@ -90,11 +90,11 @@ The virtual simulator and physical ESP32 devices are intended to use the same ba
 | RFID | RFID reader module (planned) | Card identification |
 | Actuator | Servo / compatible gate actuator | Gate movement |
 | Notification | Buzzer | Audio feedback |
-| Frontend | React + Tailwind CSS (proposed) | Web dashboard |
-| Backend | Node.js + Express (proposed) | API and application logic |
-| Database | SQLite | Local structured data storage |
-| Communication | REST API + WebSocket (proposed) | Device and dashboard communication |
-| Simulator | Software-based virtual device | Hardware-independent testing |
+| Flow runtime and application logic | Node-RED | API, event processing, and device integration |
+| Dashboard | Node-RED Dashboard package (to be selected) | Monitoring and operator controls |
+| Database | SQLite via Node-RED SQLite node | Local structured data storage |
+| Communication | HTTP initially; MQTT to be evaluated | Device and dashboard communication |
+| Simulator | Node-RED Inject nodes / virtual device client | Hardware-independent testing |
 
 The current implementation direction uses Node-RED. The exact ESP32 transport (MQTT or HTTP) and dashboard package/version will be finalized during integration.
 
