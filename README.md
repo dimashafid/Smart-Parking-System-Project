@@ -5,203 +5,129 @@
 </p>
 
 <p align="center">
-  Sistem gerbang parkir berbasis ESP32 untuk mengelola akses kendaraan melalui kartu RFID, memantau dua gerbang parkir, dan mencatat aktivitas kendaraan ke database SQLite.
+  Sistem gerbang parkir berbasis satu ESP32 untuk mengelola akses kendaraan melalui dua RFID reader, mengendalikan dua palang, dan mencatat aktivitas kendaraan ke database SQLite.
 </p>
 
 ---
 
 ## Overview
 
-**Smart Parking System** merupakan proyek Internet of Things (IoT) yang dirancang untuk membantu proses pengelolaan akses kendaraan pada area parkir. Sistem menggunakan ESP32 sebagai pengendali perangkat, modul RFID sebagai autentikasi pengguna, dan aktuator untuk menggerakkan palang gerbang.
+**Smart Parking System** merupakan proyek Internet of Things (IoT) untuk membantu pengelolaan akses kendaraan pada area parkir. Sistem menggunakan **satu board ESP32** sebagai pengendali bersama untuk dua jalur: gerbang masuk (entry) dan gerbang keluar (exit).
 
-Sistem dirancang dengan dua jalur terpisah, yaitu **gerbang masuk (entry gate)** dan **gerbang keluar (exit gate)**. Aktivitas pemindaian kartu, waktu transaksi, serta status gerbang akan dikirimkan ke server dan disimpan ke database SQLite agar dapat dipantau melalui dashboard web.
+Satu ESP32 terhubung ke dua RFID reader dan dua servo. Perangkat menentukan jalur berdasarkan reader yang menerima kartu, lalu menggunakan identitas `gate_id` (`entry` atau `exit`) saat berkomunikasi dengan Node-RED melalui MQTT.
 
-Proyek ini juga menyediakan rancangan kendali manual melalui dashboard untuk kebutuhan operasional atau keadaan darurat. Perintah dari dashboard diteruskan ke perangkat dan status gerbang diperbarui berdasarkan konfirmasi perangkat.
+Node-RED memproses validasi dan transaksi, sedangkan SQLite menyimpan data kartu, sesi parkir, perintah, serta riwayat. Dashboard web menampilkan statistik dan menyediakan kendali manual untuk masing-masing palang.
 
-> **Project status:** In development. Repository ini sedang disiapkan untuk pengembangan bertahap, dimulai dari dokumentasi dan flow Node-RED, dilanjutkan database, dashboard, simulasi perangkat, kemudian integrasi hardware.
+> **Project status:** In development. Flow Node-RED, skema database, dashboard, dan starter firmware tersedia di branch ini. Kompilasi firmware, deployment runtime, wiring, dan pengujian perangkat fisik masih harus dilakukan.
 
 ## Objectives
 
-- Membangun prototipe sistem gerbang parkir berbasis ESP32.
-- Menggunakan RFID untuk autentikasi akses kendaraan.
-- Memisahkan proses masuk dan keluar melalui dua gerbang.
-- Mencatat tanggal dan waktu transaksi secara terperinci.
-- Menyediakan monitoring status gerbang melalui dashboard web.
+- Membangun prototipe sistem parkir berbasis satu ESP32.
+- Menggunakan dua RFID reader untuk jalur masuk dan keluar.
+- Mengendalikan dua servo palang secara terpisah dari satu board.
+- Mencatat tanggal dan waktu transaksi.
+- Menyediakan monitoring kedua jalur melalui dashboard.
 - Menyimpan data kartu dan riwayat parkir menggunakan SQLite.
-- Menyediakan kendali gerbang jarak jauh dengan mekanisme konfirmasi perangkat.
-- Mengembangkan simulator agar sistem dapat diuji sebelum seluruh perangkat fisik tersedia.
-
-## Planned Features
-
-| Feature | Description | Status |
-|---|---|---|
-| RFID authentication | Validasi UID kartu RFID aktif | Implemented in Node-RED flow (local test pending) |
-| Entry gate | Kontrol palang kendaraan masuk | Planned |
-| Exit gate | Kontrol palang kendaraan keluar | Planned |
-| Parking activity log | Pencatatan sesi masuk dan keluar | Implemented in SQLite trigger (local test pending) |
-| Live gate monitoring | Status perangkat melalui MQTT | Implemented in flow (local test pending) |
-| Parking statistics | Ringkasan kendaraan masuk, keluar, dan di dalam area | Planned |
-| Emergency control | Perintah buka/tutup gerbang dari dashboard | API and UI added (auth/safety pending) |
-| SQLite database | Penyimpanan kartu, event, sesi, dan perintah | Schema and triggers added |
-| Virtual device simulator | Simulasi ESP32 dan transaksi RFID | Planned |
-
-Status fitur akan diperbarui sesuai hasil implementasi dan pengujian.
+- Menyediakan kendali manual dengan konfirmasi perangkat.
 
 ## System Architecture
-
-Rancangan arsitektur sistem:
 
 ```mermaid
 flowchart TB
     UI[Web Dashboard]
     NR[Node-RED Runtime]
     DB[(SQLite Database)]
-    SIM[Virtual Device Simulator]
-    subgraph Hardware
-      E1[ESP32 - Entry Gate]
-      E2[ESP32 - Exit Gate]
-      R1[RFID Reader - Entry]
-      R2[RFID Reader - Exit]
-      A1[Gate Actuator - Entry]
-      A2[Gate Actuator - Exit]
-      B1[Buzzer - Entry]
-      B2[Buzzer - Exit]
+    MQTT[(Mosquitto MQTT Broker)]
+    subgraph HW[One ESP32 Controller]
+      ESP[ESP32_PARKING_01]
+      R1[RFID Reader ENTRY]
+      R2[RFID Reader EXIT]
+      S1[Servo ENTRY]
+      S2[Servo EXIT]
+      B[Buzzer]
+      R1 --> ESP
+      R2 --> ESP
+      ESP --> S1
+      ESP --> S2
+      ESP --> B
     end
     UI <-->|HTTP| NR
     NR <--> DB
-    SIM <-->|HTTP / MQTT (planned)| NR
-    E1 <-->|HTTP / MQTT (to be finalized)| NR
-    E2 <-->|HTTP / MQTT (to be finalized)| NR
-    R1 --> E1
-    R2 --> E2
-    E1 --> A1
-    E2 --> A2
-    E1 --> B1
-    E2 --> B2
+    ESP <-->|MQTT: entry / exit topics| MQTT
+    MQTT <--> NR
 ```
-
-The virtual simulator and physical ESP32 devices are intended to use the same Node-RED communication interface. This allows the dashboard and database to be developed and tested before the hardware integration is complete.
 
 ## Proposed Technology Stack
 
 | Layer | Technology | Purpose |
 |---|---|---|
-| Microcontroller | ESP32 | Device control and communication |
-| RFID | RFID reader module (planned) | Card identification |
-| Actuator | Servo / compatible gate actuator | Gate movement |
+| Microcontroller | 1 × ESP32 | Shared controller for both lanes |
+| RFID | 2 × RC522 | Entry and exit card identification |
+| Actuator | 2 × servo | Separate entry and exit barriers |
 | Notification | Buzzer | Audio feedback |
-| Flow runtime and application logic | Node-RED | API, event processing, and device integration |
-| Dashboard | Node-RED HTTP template dashboard | Monitoring, card registration, and operator controls |
-| Database | SQLite via Node-RED SQLite node | Local structured data storage |
-| Communication | MQTT via Mosquitto; HTTP API for dashboard | Device events and commands |
-| Simulator | Planned MQTT test client | Hardware-independent testing |
-
-The current implementation direction uses Node-RED. The exact ESP32 transport (MQTT or HTTP) and dashboard package/version will be finalized during integration.
+| Flow runtime | Node-RED | API, transaction logic, device integration |
+| Dashboard | Node-RED HTTP template | Monitoring and operator controls |
+| Database | SQLite | Cards, sessions, status, and command records |
+| Communication | Mosquitto MQTT | Device events, commands, and status |
 
 ## Hardware Components
 
-The planned hardware components are:
+- 1 ESP32 development board.
+- 2 RFID RC522 modules and RFID cards.
+- 2 servo motors (one per gate).
+- 1 buzzer.
+- Suitable regulated power supply for the servos.
+- Supporting wiring and mechanical gate components.
 
-- ESP32 development board.
-- RFID reader module and RFID cards.
-- Gate actuator.
-- Buzzer.
-- Power source / battery.
-- Supporting wiring and electronic components.
+Both RC522 readers share the ESP32 SPI bus with separate chip-select pins. Each servo has a separate GPIO signal. Servo power must be supplied appropriately; do not power two servos from the ESP32 3.3 V output.
 
-**Design note:** This project does not currently use an HC-SR04 ultrasonic sensor. Vehicle events are initiated by RFID authentication. Therefore, the prototype does not independently detect whether a vehicle has physically passed the gate unless an additional detection mechanism is introduced.
-
-## Data Management
-
-The database is planned to manage the following information:
-
-| Data entity | Purpose |
-|---|---|
-| RFID cards | Registered card UID and card ownership/reference |
-| Parking records | Vehicle entry and exit transactions |
-| Gate status | Latest reported status of each gate |
-| Gate commands | Manual commands and their execution status |
-
-Each parking event is intended to include a date-time value with second-level precision and a gate identifier. The application should use a consistent timezone, with **Asia/Jakarta (UTC+07:00)** as the intended local timezone.
+**Design note:** The project does not currently use an HC-SR04 ultrasonic sensor. RFID scans initiate access transactions but do not prove that a vehicle physically passed the gate. No anti-crush or obstruction-detection function is claimed without additional sensors.
 
 ## Dashboard Modules
 
-The planned dashboard will contain:
-
-1. **Overview** — total vehicles entering, exiting, and currently inside the parking area.
-2. **Gate Monitoring** — separate status panels for the entry and exit gates.
-3. **Parking History** — searchable transaction history with date and time.
+1. **Overview** — total vehicles entering, exiting, and currently inside.
+2. **Gate Monitoring** — separate status panels for entry and exit.
+3. **Parking History** — transaction history with date and time.
 4. **RFID Management** — registered card management.
-5. **Emergency Control** — authorized manual open/close commands for each gate.
-6. **Device Monitoring** — device connectivity and last reported status.
+5. **Emergency Control** — authorized manual commands for either gate.
+6. **Device Monitoring** — one ESP32 controller's connectivity and last reported status, with separate gate states.
 
 ## Important System Considerations
 
-- A valid RFID scan is an access event; it is not proof that a vehicle has physically crossed the gate.
-- The number of vehicles inside the area is calculated from recorded entry and exit transactions. The application must prevent invalid or duplicate transactions.
-- A dashboard command must be acknowledged by the ESP32 before the application reports that the physical gate has changed state.
-- A communication failure must not be presented as a confirmed gate state. The dashboard should distinguish the last reported state from an unknown or disconnected device.
-- Emergency control should be restricted to authorized users and recorded in an audit log.
-- A software emergency command is not a substitute for physical safety mechanisms or emergency-stop hardware.
+- One controller handles both lanes; MQTT topics remain separate using `entry` and `exit`.
+- A valid RFID scan is an access event, not proof of physical vehicle passage.
+- A command acknowledgement means firmware issued the servo command. Without a position sensor, the physical gate position is not independently verified.
+- Network failure must not be displayed as successful gate operation.
+- Dashboard controls require authentication and authorization before deployment.
+- Physical safety mechanisms are separate from software controls.
 
 ## Repository Structure
-
-The repository will be organized progressively as the implementation develops.
 
 ```text
 Smart-Parking-System-Project/
 ├── docs/
 │   ├── ARCHITECTURE.md
+│   ├── DEVICE_PROTOCOL.md
 │   ├── DATABASE.md
+│   ├── NODE_RED.md
 │   └── ROADMAP.md
 ├── firmware/
-│   ├── entry-gate/
-│   └── exit-gate/
-├── backend/
-├── frontend/
-├── simulator/
-├── assets/
-├── .gitignore
+│   ├── smart-parking/
+│   │   └── smart-parking.ino
+│   └── README.md
+├── node-red/
+│   ├── flows/
+│   ├── dashboard/
+│   └── sql/
 └── README.md
 ```
 
-Directories for firmware, backend, frontend, simulator, and assets will be added when their source files are introduced.
-
-## Development Roadmap
-
-- [x] Create the project repository.
-- [x] Prepare initial project documentation.
-- [ ] Finalize hardware and software requirements.
-- [ ] Design the SQLite database schema.
-- [ ] Implement backend API.
-- [ ] Build the virtual device simulator.
-- [ ] Develop the web dashboard.
-- [ ] Integrate dashboard, backend, and database.
-- [ ] Implement ESP32 firmware for the entry gate.
-- [ ] Implement ESP32 firmware for the exit gate.
-- [ ] Integrate RFID readers and gate actuators.
-- [ ] Test access validation and transaction consistency.
-- [ ] Test emergency control and communication failure handling.
-- [ ] Prepare final documentation and demonstration.
-
 ## Getting Started
 
-Node-RED integration, SQLite schema, dashboard page, MQTT device protocol, and starter ESP32 firmware are available on the `node-red-connection` branch. See [Node-RED setup](node-red/README.md) and [firmware setup](firmware/README.md). The flow and sketches still require local deployment and hardware testing.
+See [Node-RED setup](node-red/README.md), [firmware setup](firmware/README.md), [system architecture](docs/ARCHITECTURE.md), and [MQTT protocol](docs/DEVICE_PROTOCOL.md).
 
-## Documentation
-
-- [System Architecture](docs/ARCHITECTURE.md)\n- [Node-RED Integration](docs/NODE_RED.md)\n- [Node-RED Setup and API](node-red/README.md)
-- [Database Design](docs/DATABASE.md)
-- [Development Roadmap](docs/ROADMAP.md)
+The firmware is a starter sketch and still needs compilation and hardware testing with both readers and both servos.
 
 ## Project Scope
 
-This repository is developed as an academic IoT project. The initial scope focuses on RFID-based access control, two-gate monitoring, transaction logging, and web-based management. It is a prototype and should not be treated as a production-certified parking barrier or a safety-critical access-control system.
-
-## Contributors
-
-Add project team members and their respective roles here as the team structure is finalized.
-
-## License
-
-No open-source license has been selected yet. All rights are reserved by the project authors unless a license is added to this repository.
+This repository is developed as an academic IoT prototype. It focuses on RFID-based access, two-gate monitoring, transaction logging, and web-based management. It is not a production-certified parking barrier or safety-critical access-control system.
