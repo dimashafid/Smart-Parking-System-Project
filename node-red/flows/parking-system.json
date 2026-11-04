@@ -1,0 +1,184 @@
+[
+  {
+    "id": "tab_parking",
+    "type": "tab",
+    "label": "Smart Parking API",
+    "disabled": false,
+    "info": "HTTP API and SQLite RFID event logging."
+  },
+  {
+    "id": "in_health",
+    "type": "http in",
+    "z": "tab_parking",
+    "name": "Health check",
+    "url": "/api/health",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 80,
+    "wires": [
+      [
+        "fn_health"
+      ]
+    ]
+  },
+  {
+    "id": "fn_health",
+    "type": "function",
+    "z": "tab_parking",
+    "name": "Health response",
+    "func": "msg.statusCode = 200;\nmsg.payload = { ok: true, service: \"smart-parking-node-red\", timestamp: new Date().toISOString() };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 350,
+    "y": 80,
+    "wires": [
+      [
+        "out_health"
+      ]
+    ]
+  },
+  {
+    "id": "out_health",
+    "type": "http response",
+    "z": "tab_parking",
+    "name": "Return health",
+    "statusCode": "",
+    "headers": {},
+    "x": 570,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "in_scan",
+    "type": "http in",
+    "z": "tab_parking",
+    "name": "RFID scan",
+    "url": "/api/rfid/scan",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 200,
+    "wires": [
+      [
+        "fn_validate"
+      ]
+    ]
+  },
+  {
+    "id": "fn_validate",
+    "type": "function",
+    "z": "tab_parking",
+    "name": "Validate scan and prepare SQL",
+    "func": "const body = msg.payload || {};\nconst gate = String(body.gate_id || \"\").toLowerCase();\nconst uid = String(body.uid || \"\").replace(/\\s+/g, \"\").toUpperCase();\nif (![\"entry\", \"exit\"].includes(gate) || !/^[A-F0-9]{4,32}$/.test(uid)) {\n    msg.statusCode = 400;\n    msg.payload = { ok: false, error: \"gate_id must be entry or exit and uid must contain 4-32 hexadecimal characters\" };\n    return [null, msg];\n}\nmsg.scan = { gate_id: gate, uid: uid, timestamp: new Date().toISOString() };\nmsg.topic = \"INSERT INTO access_events (gate_id, card_uid, event_type, created_at) VALUES (?, ?, 'rfid_scan', ?)\";\nmsg.payload = [gate, uid, msg.scan.timestamp];\nreturn [msg, null];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 200,
+    "wires": [
+      [
+        "sqlite_insert"
+      ],
+      [
+        "out_scan"
+      ]
+    ]
+  },
+  {
+    "id": "sqlite_config",
+    "type": "sqlitedb",
+    "db": "./data/parking.db",
+    "mode": "RWC",
+    "name": "Smart Parking SQLite"
+  },
+  {
+    "id": "sqlite_insert",
+    "type": "sqlite",
+    "z": "tab_parking",
+    "mydb": "sqlite_config",
+    "sqlquery": "msg.topic",
+    "sql": "",
+    "name": "Insert RFID event",
+    "x": 640,
+    "y": 180,
+    "wires": [
+      [
+        "fn_success"
+      ]
+    ]
+  },
+  {
+    "id": "fn_success",
+    "type": "function",
+    "z": "tab_parking",
+    "name": "Build success response",
+    "func": "msg.statusCode = 201;\nmsg.payload = { ok: true, message: \"RFID scan recorded\", gate_id: msg.scan.gate_id, uid: msg.scan.uid, timestamp: msg.scan.timestamp, note: \"A scan event does not confirm that a vehicle physically passed the gate.\" };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 880,
+    "y": 180,
+    "wires": [
+      [
+        "out_scan"
+      ]
+    ]
+  },
+  {
+    "id": "out_scan",
+    "type": "http response",
+    "z": "tab_parking",
+    "name": "Return scan result",
+    "statusCode": "",
+    "headers": {},
+    "x": 1110,
+    "y": 260,
+    "wires": []
+  },
+  {
+    "id": "catch_db",
+    "type": "catch",
+    "z": "tab_parking",
+    "name": "Catch SQLite errors",
+    "scope": [
+      "sqlite_insert"
+    ],
+    "uncaught": false,
+    "x": 640,
+    "y": 340,
+    "wires": [
+      [
+        "fn_error"
+      ]
+    ]
+  },
+  {
+    "id": "fn_error",
+    "type": "function",
+    "z": "tab_parking",
+    "name": "Build database error response",
+    "func": "msg.statusCode = 500;\nmsg.payload = { ok: false, error: \"Database operation failed\" };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 880,
+    "y": 340,
+    "wires": [
+      [
+        "out_scan"
+      ]
+    ]
+  }
+]
